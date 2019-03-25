@@ -1,0 +1,23 @@
+global _bios_writedisk
+extern _io_error
+_bios_writedisk:push bp
+mov bp,sp
+mov ax,ds
+mov es,ax
+mov al,1
+mov ah,3
+mov bx,[bp+4]
+mov dl,[bp+6]
+mov ch,[bp+8]
+mov dh,[bp+10]
+mov cl,[bp+12] 
+int 0x13
+cmp ax,1
+je r
+xor al,al
+shr ax,8
+push ax
+call _io_error
+pop ax
+r:pop bp
+ret

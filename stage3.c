@@ -1,0 +1,94 @@
+#include <lib.h>
+#include <tmpfs.h>
+#include <video.h>
+#include <stdint.h>
+void bzero(void *buf,unsigned int n){
+	for(int i = 0; i < n;i++)
+		*((uint8_t*)buf + n) = 0;
+}
+
+int main(){
+	clear();
+	puts("In protected mode!\n");
+	puts("Stage 3 loaded\n");
+	puts("Searching for boot disk...\n");
+	char *buf = malloc(1024);
+	bzero(buf,1024);
+	uint8_t slavebit = -1;
+	uint16_t drive = -1;
+	puts("HDA->");
+	int8_t a = ata_read_master(buf,1,0x1f0,0xe0);
+	if(a == 0){
+		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found\n");
+			drive = 0x1f0;
+			slavebit = 0xe0;
+			goto a;
+		}
+	}
+	bzero(buf,512);
+	puts("\nHDB->");
+	a = ata_read_master(buf,1,0x1f0,0xf0);
+	if(a == 0){
+		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
+			drive = 0x1f0;
+			slavebit = 0xf0;
+			goto a;
+		}
+	}
+	bzero(buf,512);
+	puts("\nHDC->");
+	a = ata_read_master(buf,1,0x170,0xe0);
+	if(a == 0){
+		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
+			drive = 0x170;
+			slavebit = 0xe0;
+			goto a;
+		}
+	}
+	bzero(buf,512);
+	puts("\nHDD->");
+	a = ata_read_master(buf,1,0x170,0xf0);
+	if(a == 0){
+		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
+			drive = 0x170;
+			slavebit = 0xe0;
+			goto a;
+		}
+	}
+	puts("No devices Found!\n");
+a:;	puts("Done Searching Drives\n");
+	*(uint16_t*)0x100 = drive;
+	*(uint8_t *)0x102 = slavebit;
+	free(buf);
+	buf = malloc(512);
+	ata_read_master(buf,0,*(uint16_t*)0x100,*(uint8_t*)0x102);
+	*(uint32_t*)0x103 = *(uint32_t*)(buf + 0x1be);
+	puts("Using lba:");
+	puti(*(uint32_t*)0x103);
+  	puts("\nTesting low level file I/O\n");
+	free(buf);
+	buf = malloc(512);
+	puts("Opening...\n");
+	int fd = open("/test",O_RDWR);
+	if(fd < 0){
+		puts("Failed to open file!\n");
+		panic();
+	}
+	puts("Reading...\n");
+	llread(fd,buf,512);
+	puts("Done reading...\n");
+	puts(buf); 
+	panic();
+}
+void panic(){
+	int address;
+	__asm__("pop %0" : "=m"(address));
+	puti(address);
+	puts("d:panic()\nA fatal error has occured\n");
+	asm("cli");
+	asm("hlt");
+}

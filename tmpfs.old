@@ -1,0 +1,298 @@
+#include "lib.h"
+#include "tmpfs.h"
+#include "tmpfs_intrnls.h"
+#include "mbr.h"
+#include "err.h"
+void bug_report(char *str){
+#ifdef __INTERNAL
+	puts("Please Fix your code!");
+#else
+	puts("An error has occured that should never occur in this stage unless run on unsupported hardware. Please send the following along with description of your hardware to schlotmanprogramming@gmail.com:");
+	puts(str);
+	putc('\n');
+#endif
+	panic();
+}
+char *getDir(const char *sdir,uint8_t n){
+	int indx = 0;
+	int i = 0;
+	char *buf = malloc(0x20);
+	if(n == -1)
+		return "/\0";
+	for(i = 0; i <= n;i++){
+		int j = 0;
+		bzero(buf,0x20);
+		while(sdir[indx] == '/' && sdir[indx] != 0)
+			indx++;
+		while(sdir[indx] != '/' && sdir[indx] != 0){
+			buf[j] = sdir[indx];
+	
+			indx++;
+			j++;
+		}
+	}
+	return buf;
+}
+struct PartTab *getPTab(){
+	char *buf = malloc(512);
+	struct PartTab *ret = malloc(sizeof(*ret));
+	bios_readdisk(buf,*(uint8_t*)0x100,0,1,0);
+	memcpy(ret,buf + 0x1be,0x10);
+	return ret;
+}
+int countc(char *str,char c){
+	int ret = 0;
+	int i  = 0;
+	while(i < strlen(str)){
+		if(str[i] == c)
+			ret++;
+		i++;
+	}
+	return ret;
+}
+void incCHS(int *c,int *h,int *s){
+	if(*(s) + 1 == 64){
+		if(*h == 255){
+			*c++;
+			*h=0;
+			*s = 0;
+			return;
+		}
+		*h++;
+		*s = 0;
+		return;
+	}
+	*s++;
+	return;
+}
+struct CHS *findFreeDir(uint16_t *c,uint8_t *h,uint8_t *s,uint8_t *offset){
+	uint8_t *buf = malloc(512);
+	uint8_t *zbuf = malloc(sizeof(struct Entry_16));
+	struct CHS *ret = malloc(sizeof(*ret));
+	int r,i,hasFirst = 0;
+	bzero(zbuf,sizeof(struct Entry_16));
+go:;
+	for(i = !hasFirst ? *offset: 0; i < 512-sizeof(struct Entry_16);i++){
+		bios_readdisk(buf,*(uint8_t*)0x100,*h,*s,*c);
+		if(memcmp(buf + i,zbuf,sizeof(struct Entry_16)) == 0){
+			ret->c = c;
+			ret->h = h;
+			ret->s = s;
+			*offset = i;
+			free(buf);
+			free(zbuf);
+
+			return ret;
+		}
+	}
+	if(!hasFirst)
+		hasFirst^=1;
+	incCHS(*c,*h,*s);
+	goto go;	
+}
+uint8_t mkdir(char *_dir){
+	struct PartTab *pt = getPTab();
+	char *rootdir = malloc(512);
+	char *buf = rootdir;
+	char *dir,namebuf;
+	struct Entry_16 *ent;
+	int c = pt->scs >> 6,h = pt->shead,s = (pt->scs & 63)+1,offset = sizeof(struct Entry_16);
+	int k = 0;
+	int r;
+	bios_readdisk(rootdir,*(uint8_t*)0x100,pt->shead,pt->scs & 63,pt->scs >> 6);
+	if(strcmp(_dir,"/") == 0){
+		if(rootdir[0] == 0){
+			struct Entry_16 *write = malloc(sizeof(*write));
+			int r;
+			char *fin = malloc(512);
+			bzero(fin,512);
+			write->alloc = 1;
+			write->type = T_DIR;
+			write->data = 0;
+			write->name[0] = '/';
+			write->sc = pt->scs >> 6;
+			write->sh = pt->shead;
+			write->ss = (pt->scs & 63)+1;
+			write->offset = sizeof(*write);
+			write->ec = 0;
+			write->eh = 0;
+			write->es = 0;
+			write->ns = write->ss;
+			write->nc = write->sc;
+			write->nh = write->sh;
+			memcpy(fin,write,sizeof(*write));
+			r = bios_writedisk(fin,*(uint8_t*)0x100,pt->scs >> 6,pt->shead,(pt->scs & 63)+1);
+			free(fin);
+			free(write);
+			free(pt);
+			return 1;
+		}
+		bug_report("Trying to make root dir twice");
+		return 0;
+	}
+rst:;   dir = getDir(_dir,k);
+	if(countc(_dir,'/')-1 <= k){
+		int pc = c,ph = h,ps =s;
+		int tc,ts,th,toffset;
+		findFreeDir(&c,&h,&s,&offset);
+		ent = malloc(sizeof(*ent));
+		bzero(ent,sizeof(*ent));
+		ent->alloc = 1;
+		ent->type = T_DIR;
+		ent->data = 0;
+//		puts(dir);
+		strcpy(ent->name,dir);
+		pc = c;ph = h;ps = s;
+		if(offset+sizeof(*ent) <= 512){
+			ent->ss = s;
+			ent->sh = h;
+			ent->sc = c;
+			
+		}else{
+			if(s+1 == 64)
+				s = 0;h++;
+			if(s+1 == 64 && h+1 == 256)
+				s = 0; h = 0;c++;
+			ent->ss = s;
+			ent->sh = h;
+			ent->sc = c;
+			offset = 0;
+		}
+		ent->es = s;
+		ent->eh = h;
+		ent->ec = c;
+		tc = c;th = h;ts = s;toffset = offset;
+		findFreeDir(&tc,&th,&ts,&toffset);
+		offset = toffset;
+		ent->ns = ts;
+		ent->nh = th;
+		ent->nc = tc;
+		r = bios_readdisk(buf,*(uint8_t*)0x100,h,s,c);
+		memcpy(buf + toffset,ent,sizeof(*ent));
+		r = bios_writedisk(buf,*(uint8_t*)0x100,c,h,s);
+		findFreeDir(&tc,&th,&ts,&toffset);
+//		bzero(ent->name,sizeof(ent->name)/(ent->name[0]));
+		bzero(ent->name,0x20);
+		strcpy(ent->name,".");
+		bios_readdisk(buf,*(uint8_t *)0x100,th,ts,tc);
+		memcpy(buf + toffset,ent,sizeof(*ent));
+		r = bios_writedisk(buf,*(uint8_t*)0x100,tc,th,ts);
+		bzero(ent->name,0x20);
+		strcpy(ent->name,"..");
+		ent->nc = pc;
+		ent->nh = ph;
+		ent->ns = ps;
+		findFreeDir(&tc,&th,&ts,&toffset);
+		bios_readdisk(buf,*(uint8_t*)0x100,th,ts,tc);
+		memcpy(buf + toffset,ent,sizeof(*ent));
+		bios_writedisk(buf,*(uint8_t*)0x100,tc,th,ts);
+		free(ent);
+		free(pt);
+		free(dir);
+		free(buf);
+		offset+=sizeof(*ent);
+		return 1;
+	}
+
+//	c = pt->scs >> 6;h = pt->shead; s = pt->scs & 63;
+	while(strcmp(namebuf,dir) != 0){
+
+		uint8_t *read = malloc(512);
+		bzero(read,512);
+		namebuf = malloc(512);
+		bzero(namebuf,512);
+		bios_readdisk(read,*(uint8_t*)0x100,h,s,c); 
+		//puti(c);
+		puts(".");
+	//	puti(h);
+		puts(".");
+	//	puti(s);
+		puts(".");
+	//	puti(read[0]);
+		puts(".");
+	//	puti(offset);
+		puts("\n");
+		ent = (struct Entry_16 *)(read + offset);
+		if(ent->alloc != 1){
+			puts("ent->alloc !=1\n");
+			bug_report("ent->alloc != 1");
+			*(uint8_t*)(0x00ff) = ERR_FILE_NOT_FOUND;
+			return 0;
+		}
+		strcpy(namebuf,ent->name);
+		offset=ent->offset;
+		c = ent->ec;
+		h = ent->eh;
+		s = ent->es;
+		free(namebuf);
+//		bios_readdisk(buf,*(uint8_t*)(0x100),c,h,s);
+		free(read);
+	}
+	puts("Found dir:");
+	puts(dir);
+	puts("\n");
+	c = ent->nc;
+	h = ent->nh;
+	s = ent->ns;
+	k++;
+	free(rootdir);
+	goto rst;
+
+}
+struct CHS *__get_tmpfs(){
+	uint8_t drive = *(uint8_t*)0x100;
+	uint8_t part = *(uint8_t*)0x101;
+	struct CHS *ret = malloc(sizeof(*ret));
+	uint8_t *buf = malloc(512);
+	bios_readdisk(buf,drive,0,1,0);
+	ret->c = *(buf + 0x1FA);
+	ret->h = *(buf + 0x1FB);
+	ret->s = *(buf + 0x1FC);
+	return ret;
+}
+int open(const char *path,unsigned int args){
+	struct tmpfs_FD *fd = (struct tmpfs_FD *)0;	
+}
+mkfs_tmpfs(int fd){
+	char pt[0x40];
+	uint8_t *buf = malloc(512);
+	int r;
+	bzero(buf,512);
+	puts("mkfs_tmpfs(fd)->ALL DATA ON SECTOR 1 WILL BE ERASED!\n");
+	puts("Ignoring file descriptor...");
+	bzero(pt,0x40);
+	puts("Reading disk geo...");
+	if(1){
+		struct PartTab *ptab = malloc(sizeof(*ptab));
+		uint8_t s;
+		uint16_t ecs;
+		uint8_t *pntr;
+//		uint8_t ecs;
+		ptab->bootable = 1;
+		ptab->shead = 0;
+		ptab->scs = 1;
+		ptab->id = -1;
+		ptab->ehead = getDiskDH();
+		ecs = (uint16_t)getDiskCX();
+		ptab->ecs = ecs;
+		ptab->lba = 1;
+		ptab->tsectors = ptab->ehead*(ptab->ecs);
+		memcpy(buf + 0x1b4,"TMPFS",strlen("TMPFS"));
+		memcpy(buf + 0x1be,ptab,0x10);
+		buf[0x1fe] = 0x55;
+		buf[0x1ff] = 0xaa;
+		puts("Writing Boot Sector...");
+		r = bios_writedisk(buf,*(uint8_t*)0x100,0,0,1);
+		if(r != 1){
+
+			puts("I/O ERROR Error code:");
+//			puti(r >> 8);
+			putc('\n');
+			panic();
+		}
+		mkdir("/");
+		puts("Done\n");
+		free(ptab);
+	}
+	free(buf);
+}

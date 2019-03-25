@@ -1,0 +1,14 @@
+[bits 16]
+section .data
+msg:db 'Loading...',0xa,0
+section .text
+extern _main
+extern _test
+global main
+extern _hello
+main:mov ah,0
+mov al,0x03
+int 0x10
+mov sp,0xffff
+mov bp,sp
+jmp _main
