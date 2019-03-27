@@ -9,4 +9,7 @@ struct Entry{
 #define TYPE_DIR 1
 #define TYPE_FILE 2
 #define TYPE_EMPTY 3
+#ifdef KERN_BUILD
+int llread(int fd,void *buf,int n);
+#endif
 #endif

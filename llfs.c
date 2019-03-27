@@ -39,11 +39,11 @@ struct Entry *__opendir(const char *dir){
 	struct Entry *ent = malloc(sizeof(*ent));
 	bzero(buf,512);
 	llfs_ata_read_master(buf,0,*(uint16_t*)0x100,*(uint8_t*)0x102);
-	puts("Exec\n");
 	bzero(ent,sizeof(*ent));
 	char **dirs = sep(dir,'/');
 	int i = 0;
 a:;while(1){
+	
 		memcpy(ent,buf,sizeof(*ent));
 		puts(buf + sizeof(*ent));
 		if(strcmp(buf +sizeof(*ent),dirs[i]) == 0)
