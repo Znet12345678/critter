@@ -16,9 +16,17 @@ unsigned int strlen(const char *str){
 unsigned int strcat(char *dest,const char *src){
 	strcpy(&dest[strlen(dest)],src);
 }
+
 #ifndef __PM
+
 int strcmp(char *str,char *str2){
 #else
+int strncmp(const char *str,const char *str2,unsigned int n){
+	for(int i = 0; i < n;i++)
+		if(*(str +i) != *(str2+i))
+			return ++i;
+	return 0;
+}
 int strcmp(const char *str,const char *str2){
 #endif
 	int i = 0;

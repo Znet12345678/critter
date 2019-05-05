@@ -5,9 +5,10 @@
  */
 #include <elf.h>
 #include <lib.h>
+#include <string.h>
 #ifdef __STANDALONE
 void load_stage_3(){
-	void *pntr = 0xA000;
+	void *pntr = (void*)0xA000;
 	Elf32_Ehdr *ehdr = (Elf32_Ehdr*)0xA000;
 	Elf32_Phdr *phdr = (Elf32_Phdr*)(0xA000 + (uint16_t)ehdr->e_phoff);
 	void (*func)();
@@ -16,7 +17,7 @@ void load_stage_3(){
 		if((uint16_t)phdr[i].p_type == PT_LOAD)
 			memcpy((uint16_t*)phdr[i].p_vaddr,(uint8_t*)pntr + (uint16_t)phdr[i].p_offset,phdr[i].p_memsz);
 	}
-	func = ehdr->e_entry;
+	func = (void*)ehdr->e_entry;
 	func();
 }
 

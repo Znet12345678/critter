@@ -66,12 +66,14 @@ ret
 wait_400ns:
 mov dx,[drive]
 add dx,7
-loop2:
+loop2:mov word [cnt],0
+_loop2:
 in byte ax,dx
 cmp word [cnt],4
+je loop2r
 inc word [cnt]
-jne loop2
-mov word [cnt],0
+jmp _loop2
+loop2r:mov word [cnt],0
 ret
 wait_irq:
 push ebp

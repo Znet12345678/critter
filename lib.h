@@ -16,12 +16,21 @@ unsigned int strlen(const char *str);
 void *memcpy(void *dest,const void *src,unsigned int n);
 char *strcpy(char *dest,const char *src);
 int strcmp(const char *str,const char *str1);
+#else
 #endif
+void putx(int n);
+void puti(int n);
+void scroll();
+void move_cursor(uint8_t a,uint8_t b);
 void panic();
 int pow(int a,int b);
 struct Mem{
 	uint8_t alloc;
+#ifndef __PM
 	uint16_t size;
+#else
+	uint32_t size;
+#endif
 };
 struct CHS{
 	uint16_t c;

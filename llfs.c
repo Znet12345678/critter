@@ -1,4 +1,5 @@
 #include <mem.h>
+extern int strncmp(const char *str1,const char *str2,unsigned int n);
 #include <lib.h>
 #include <llfs.h>
 int llfs_ata_read_master(void *buf, uint32_t lba,uint16_t drive,uint8_t slave){
@@ -10,18 +11,26 @@ char **sep(const char *dir,char c){
 	int k = 0;
 	while(dir[i] == c)
 		i++;
+	if(strcmp(dir,"") == 0){
+		char **arr = malloc(sizeof(char**));
+		arr[0] = "";
+		return arr;
+	}
 	char **ret = malloc(sizeof(*ret)*(strlen(dir)+1));
 	int size = 0;
+	bzero(ret[0],strlen(dir));
 	while(i < strlen(dir)){
 		if(dir[i] == c){
 			size+=j;
 			j = 0;
 			k++;
 			ret[k] = malloc(strlen(dir)-size);
+			bzero(ret[k],strlen(dir)-size);
 			i++;
 			continue;
 		}
 		ret[k][j] = dir[i];
+		j++;
 		i++;
 	}
 	k++;
@@ -41,18 +50,28 @@ struct Entry *__opendir(const char *dir){
 	llfs_ata_read_master(buf,0,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	bzero(ent,sizeof(*ent));
 	char **dirs = sep(dir,'/');
+	memcpy(ent,buf,sizeof(*ent));
+	if(strcmp(dir,"") == 0)
+		return ent;
+	llfs_ata_read_master(buf,ent->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	int i = 0;
+
 a:;while(1){
-	
 		memcpy(ent,buf,sizeof(*ent));
-		puts(buf + sizeof(*ent));
-		if(strcmp(buf +sizeof(*ent),dirs[i]) == 0)
+		if(strncmp(buf +sizeof(*ent),dirs[i],strlen(dirs[i])) == 0){
 			break;
-		if(ent->contlba == 0)
+		}
+		else if(ent->nsize == 0)
+			if(strncmp(dir,"\0",1) == 0)
+				break;
+
+		if(ent->contlba == 0){
+			puts("Critical low level directory missing\n");
+			panic();
 			return 0;
+  		}
 		llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
-		i++;
-	}
+	  }
 	i++;
 	if(dirs[i] == 0){
 #ifdef __FS_DEBUG
@@ -62,6 +81,7 @@ a:;while(1){
 #endif
 		return ent;
 	}
+	llfs_ata_read_master(buf,ent->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	goto a;	
 }
 struct llfd *getAddressSpace(){
@@ -69,7 +89,7 @@ struct llfd *getAddressSpace(){
 		return (struct llfd*)*(uint32_t*)0x201;
 	}
 	*(uint8_t *)(0x200) = 1;
-	*(uint32_t *)(0x201) = (uint32_t)malloc(1024000);
+	*(uint32_t *)(0x201) = (uint32_t)malloc(0x1000);
 	struct llfd *pntr = (struct llfd*)*(uint32_t*)0x201;
 	pntr->pntr = 0;
 	pntr->nxt = malloc(sizeof(*pntr->nxt));
@@ -100,7 +120,7 @@ int getLLFD(struct llfd *l){
 	int i = 0;
 	while(pntr->nxt != 0){
 		if(pntr == l)
-		       return i;	
+		       return i;
 		pntr = pntr->nxt;
 		i++;
 	}
@@ -130,61 +150,91 @@ int finc(const char *str,char c){
 char* fins(const char *str,char c){
 	int i = strlen(str)-1;
 	char *ret = malloc(strlen(str)-finc(str,c));
+	int indx = strlen(str)-2;
 	while(i >= 0){
 		if(str[i] == c)
 			break;
-		ret[strlen(str)-1-i] = str[i];
+		ret[indx] = str[i];
+		indx--;
 		i--;
 	}
 	return ret;
 }
 int open(const char *_file,int options){
-	char *file = malloc(strlen(_file)+1);
-	bzero(file,strlen(_file)+1);
-	strcpy(file,_file);
-	strip(file);
-	uint8_t *buf = malloc(512);
+	char *file = malloc(strlen(_file));
+	bzero(file,strlen(_file));
+	int i = 0;
+	while(_file[i] == '/')
+		i++;
+	strcpy(file,substring((char*)_file,i,strlen(_file)));
+	uint8_t *buf = malloc(513);
+	bzero(buf,513);
 	struct Entry *ent = __opendir(substring(file,0,finc(file,'/')));
 	llfs_ata_read_master(buf,ent->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	ent =(struct Entry *) buf;
+	int lba= 0;
+	char *filen = substring(file,finc(file,'/')+1,strlen(file));
+
 	while(1){
-		if(strcmp(buf + sizeof(*ent),fins(file,'/')) == 0){
+
+		if(strncmp(buf + sizeof(*ent),filen,strlen(filen)) == 0){
 			struct llfd *llfd = allocllfd();
-			llfd->pntr = (struct Entry *)ent;
+			llfd->pntr = (struct Entry *)buf;
 			llfd->t = options;
-			return getLLFD(llfd);		
+			llfd->pntr->contlba = lba;
+			return getLLFD(llfd);	
 		}
-		llfs_ata_read_master(buf,ent->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
-		if(ent->nxtlba == 0)
-			break;
+		if(ent->contlba == 0){
+			puts("Failed to open critical file!\n");
+			panic();
+		}
+		lba=  ent->contlba;
+		llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 		ent = (struct Entry *)buf;
 	}
-	if(options == O_WRONLY || options == O_RDWR){
-		struct llfd *llfd = allocllfd();
-		llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
-		llfd->pntr = (struct Entry *)buf;
-		llfd->nxt = 0;
-		llfd->t = options;
-		return getLLFD(llfd);
-	}
-	return -1;
-	
+	struct llfd *llfd = allocllfd();
+	llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
+	llfd->pntr = (struct Entry *)buf;
+	llfd->nxt = 0;
+	llfd->t = options;
+	return getLLFD(llfd);	
+}
+int abs(int n){
+	return n < 0 ? n*-1 : n;
 }
 int llread(int fd,char *buf,unsigned int n){
 	if(fd < 0)
 		return -1;
+	char *tbuf = malloc(1024);
 	struct llfd *llfd = getllfd(fd);
-	int i = llfd->pntr->contlba, j = 0;
+	int j = 0;
+	struct Entry *ent = malloc(sizeof(*ent));
+	memcpy(ent,llfd->pntr,sizeof(*llfd->pntr));	
+//	puti(llfd->pntr->contlba);
 	while(j < n){
-		uint8_t *tbuf = malloc(512);
-		uint8_t sz = 512-sizeof(*llfd->pntr)-llfd->pntr->nsize;
-		llfs_ata_read_master(tbuf,llfd->pntr->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
-
-		memcpy(buf + j,tbuf + sizeof(*llfd->pntr) + llfd->pntr->nsize,j+sz > n ? n-j : sz);
-		if(llfd->pntr->contlba == 0)
+		bzero(tbuf,1024);
+		uint8_t sz = 512-sizeof(*ent)-ent->nsize;
+		llfs_ata_read_master(tbuf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
+		memcpy(ent,tbuf,sizeof(*ent));
+		memcpy(buf + j,tbuf + sizeof(*ent) + ent->nsize,j+sz > n ? abs(n-j) : sz);
+//		putx(ent->contlba);
+///		puts("\n");
+		if(ent->contlba == 0)
 			return j;
-		free(tbuf);
-		j+=j+sz > n ? n-j: sz;
+
+
+		j+=j+sz > n ? abs(n-j): sz;
 	}
+	free(tbuf);
 	return j;
+}
+int fsize(int fd){
+	if(fd < 0)
+		return -1;
+	char *tbuf = malloc(1024);
+	struct llfd *llfd = getllfd(fd);
+	int size = 0;
+	struct Entry *ent = malloc(sizeof(*ent));
+	memcpy(ent,llfd->pntr,sizeof(*llfd->pntr));
+	return ent->size;
 }

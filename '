@@ -7,75 +7,95 @@ void bzero(void *buf,unsigned int n){
 	for(int i = 0; i < n;i++)
 		*((uint8_t*)buf + n) = 0;
 }
-#define CPU "x86/i386 intel"
-#define KVERSION "0.0.0-r0"
+
 int main(){
 	clear();
-	puts("CPU Build Version: ");
-	puts(CPU);
-	puts("\nKernel ");
-	puts(KVERSION);
-	puts(" loading...");
+	puts("In protected mode!\n");
+	puts("Stage 3 loaded\n");
+	puts("Searching for boot disk...\n");
 	char *buf = malloc(1024);
 	bzero(buf,1024);
 	uint8_t slavebit = -1;
 	uint16_t drive = -1;
+	puts("HDA->");
 	int8_t a = ata_read_master(buf,1,0x1f0,0xe0);
 	if(a == 0){
 		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found\n");
 			drive = 0x1f0;
 			slavebit = 0xe0;
 			goto a;
 		}
 	}
 	bzero(buf,512);
+	puts("\nHDB->");
 	a = ata_read_master(buf,1,0x1f0,0xf0);
 	if(a == 0){
 		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
 			drive = 0x1f0;
 			slavebit = 0xf0;
 			goto a;
 		}
 	}
 	bzero(buf,512);
+	puts("\nHDC->");
 	a = ata_read_master(buf,1,0x170,0xe0);
 	if(a == 0){
 		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
 			drive = 0x170;
 			slavebit = 0xe0;
 			goto a;
 		}
 	}
 	bzero(buf,512);
-
+	puts("\nHDD->");
 	a = ata_read_master(buf,1,0x170,0xf0);
 	if(a == 0){
 		if(memcmp(buf,"WORM",4) == 0){
+			puts("Found");
 			drive = 0x170;
 			slavebit = 0xe0;
 			goto a;
 		}
 	}
 	puts("No devices Found!\n");
-a:;
+a:;	puts("Done Searching Drives\n");
 	*(uint16_t*)0x100 = drive;
 	*(uint8_t *)0x102 = slavebit;
 	free(buf);
 	buf = malloc(512);
 	ata_read_master(buf,0,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	*(uint32_t*)0x103 = *(uint32_t*)(buf + 0x1be);
+	puts("Using lba:");
+	puti(*(uint32_t*)0x103);
+  	puts("\nTesting low level file I/O\n");
+	free(buf);
+	buf = malloc(2049);
+	puts("Opening...\n");
+	int fd = open("/test",O_RDWR);
+	if(fd < 0){
+		puts("Failed to open file!\n");
+		panic();
+	}
+	puts("Reading...\n");
+	int sz=llread(fd,buf,2048);
+	puts("Done reading...\n");
+	buf[512] = 0;
+	puts(buf);
+	//	for(int i = 0; i < 2048;i++)
+//		putc(buf[i]);
 	puts("\n");
-	panic("Nothing to do");
+	panic();
 }
-void panic(char *message){
+void panic(){
 	int address = 0;
 	asm("movl 4(%ebp),%eax");
 	asm("movl %%eax,%0" : "=m"(address));
 	puts("0x");
 	putx(address);
-	puts(":panic(");
-	puts(message);
-	puts(")\nA fatal error has occured\n");
+	puts(":panic()\nA fatal error has occured\n");
 	asm("cli");
 	asm("hlt");
 }

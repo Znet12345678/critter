@@ -6,6 +6,40 @@
 #include <llfs.h>
 #include <dirent.h>
 #include <sys/types.h>
+char **sep(const char *dir,char c){
+        int i = 0;
+        int j = 0;
+        int k = 0;
+        while(dir[i] == c)
+                i++;
+        if(strcmp(dir,"") == 0){
+                char **arr = malloc(sizeof(char**));
+                arr[0] = "";
+                return arr;
+        }
+        char **ret = malloc(sizeof(*ret));
+        int size = 0;
+	ret[0] = malloc(strlen(dir+1));
+        bzero(ret[0],strlen(dir));
+        while(i < strlen(dir)){
+                if(dir[i] == c){
+                        size+=j;
+                        j = 0;
+			k++;
+                        ret[k] = malloc(strlen(dir)-size);
+                        bzero(ret[k],strlen(dir)-size);
+                        i++;
+                        continue;
+                }
+                ret[k][j] = dir[i];
+                i++;
+		j++;
+        }
+        k++;
+        ret[k] = 0;
+        return ret;
+}
+
 int countc(const char *str,char c){
 	int i = 0, ret = 0;
 	while(str[i] != 0){
@@ -43,100 +77,88 @@ int allocSector(FILE *f){
 	}
 	return -1;
 }
+int _opendir(char *d,FILE *f);
 int getLastIndx(char *pntr,char c);
 int _mkdir(char *_d,FILE *f){
-	char *d = malloc(1024);
-	strcpy(d,_d);
-	d[strlen(d)-1] = d[strlen(d)-1]=='/' ? 0 : d[strlen(d)-1];
-	char *d2 = malloc(1024);
-	strcpy(d2,d);
-	struct Entry *node = malloc(512);
-	readDisk(f,0,node);
-	char *tok = malloc(1024);
-	bzero(tok,1024);
-	int i = 0;
-	char *alloc = malloc(512);
-	alloc[0] = 3;
-a:;	if(strcmp(_d,"/") == 0 || tok == NULL){
-		 goto b;
-  	}
-	readDisk(f,node->nxtlba,node);
-	while(node->contlba != 0 && (strcmp((char*)(node + sizeof(*node)),tok) != 0 && node->type != TYPE_DIR)){
-		printf("%s\n",node + sizeof(*node));
-		readDisk(f,node->contlba,node);
+	uint8_t *buf = malloc(512);
+	int lba = _opendir(subpntr(_d,0,getLastIndx(_d,'/')),f);	
+	struct Entry *ent = malloc(sizeof(*ent));
+	readDisk(f,lba,buf);
+	memcpy(ent,buf,sizeof(*ent));
+	lba = ent->contlba;
+	int sv = ent->contlba;
+	while(ent->contlba != 0){
+		lba = ent->contlba;
+		readDisk(f,ent->contlba,buf);
+		memcpy(ent,buf,sizeof(*ent));
 	}
-	if(countc(_d,'/') <= 1)
-		goto b;
-	if(node->contlba == 0 && strcmp(d,"/") != 0 || node->type != TYPE_DIR){
-		return 0;
-	}
-	if(0){
-b:;		uint8_t *buf = malloc(512);
-		struct Entry *hdr = malloc(512);
-		int sv2;
-		while(hdr->contlba != 0){
-			sv2 = hdr->contlba;
-			readDisk(f,hdr->contlba,hdr);
-		}
-		node->contlba = allocSector(f);
-		writeDisk(f,sv2,hdr);
-		int sv = node->contlba;
-		char *tmp = subpntr(d2,getLastIndx(d2,'/')+1,strlen(d2));
-		memcpy(buf + sizeof(*hdr),tmp,strlen(tmp));
-		writeDisk(f,node->contlba,buf);
-		hdr->contlba = allocSector(f);
-		hdr->nxtlba = allocSector(f);
-		hdr->type = TYPE_DIR;
-		memcpy(buf,hdr,sizeof(*hdr));
-		writeDisk(f,sv,buf);
-		int lba = hdr->nxtlba;
-		hdr->nxtlba = lba;
-		hdr->contlba = allocSector(f);
-		bzero(buf,512);
-		memcpy(buf,hdr,sizeof(*hdr));
-		memcpy(buf + sizeof(*hdr),".",strlen("."));
+	ent->contlba = allocSector(f);
+	memcpy(buf,ent,sizeof(*ent));
+	if(strcmp(_d,"/") != 0)
 		writeDisk(f,lba,buf);
-		lba = hdr->contlba;
-		hdr->nxtlba = hdr->contlba;
-		hdr->contlba = allocSector(f);
-		bzero(buf,512);
-		memcpy(buf,hdr,sizeof(*hdr));
-		memcpy(buf + sizeof(*hdr),"..",strlen(".."));
-		writeDisk(f,lba,buf);
-		free(buf);
-		free(hdr);
-		free(node);
-		return 1;
-	}
-	tok = strtok(strcmp(tok,"") == 0 ? d : NULL,"/");
-	i++;
-	goto a;
-		
-}
-int _opendir(char *d,FILE *f){
-	struct Entry *node = malloc(512);
-	readDisk(f,0,node);
-	char *tok = strtok(d,"/");
-a:;readDisk(f,node->nxtlba,node);
-	int lba = node->nxtlba;
-	if(tok == NULL)
-		goto b;
-	while(node->contlba != 0 && strcmp((char*)(node + sizeof(*node)),tok) != 0 && node->type != TYPE_DIR){
-		lba = node->contlba;
-		readDisk(f,node->contlba,node);	
+	lba = ent->contlba;
+	ent = malloc(sizeof(*ent));
+	ent->type = TYPE_DIR;
+	ent->nxtlba = allocSector(f);
+	ent->contlba = 0;
 
-	}
-	if(node->contlba == 0 || node->type != TYPE_DIR){
-		free(node);
+	char *name = subpntr(_d,getLastIndx(_d,'/')+1,strlen(_d));
+	ent->nsize = strlen(name);
+	memcpy(buf,ent,sizeof(*ent));
+	memcpy(buf + sizeof(*ent),name,strlen(name)+1);
+	writeDisk(f,lba,buf);
+	bzero(buf,512);
+	lba = ent->nxtlba;
+	ent->nsize = 1;
+	ent->contlba = allocSector(f);
+	memcpy(buf,ent,sizeof(*ent));
+	memcpy(buf + sizeof(*ent),".\0",2);
+	writeDisk(f,lba,buf);
+	bzero(buf,512);
+	lba = ent->contlba;
+	ent->nsize = 2;
+	ent->nxtlba = sv;
+	ent->contlba = 0;
+	memcpy(buf,ent,sizeof(*ent));
+	memcpy(buf+sizeof(*ent),"..\0",3);
+	writeDisk(f,lba,buf);
+	return 1;
+}
+int  _opendir(char *dir,FILE *f){
+	char *buf = malloc(512);
+        struct Entry *ent = malloc(sizeof(*ent));
+   	bzero(ent,sizeof(*ent));
+   	bzero(buf,512);
+	if(feof(f))
 		return 0;
-	}
-	if(0){
-		while(node->contlba != 0)
-			readDisk(f,node->contlba,node);
-b:;		return lba;
-	}
-	tok = strtok(NULL,"/");
-	goto a;
+	readDisk(f,0,buf);
+     	char **dirs = sep(dir,'/');
+	memcpy(ent,buf,sizeof(*ent));
+	if(strcmp(dir,"") == 0)
+		return ent->nxtlba;
+	readDisk(f,ent->nxtlba,buf);
+	int i = 0;
+a:;while(1){
+        	if(i > countc(dir,'/'))
+			return -1;
+		memcpy(ent,buf,sizeof(*ent));
+                if(strncmp(buf +sizeof(*ent),dirs[i],strlen(dirs[i])) == 0)
+                        break;
+                else if(ent->nsize == 0)
+                        if(strncmp(dir,"\0",1) == 0)
+                                break;
+                if(ent->contlba == 0)
+                        return 0;
+               	readDisk(f,ent->contlba,buf);
+   
+        }
+  	i++;
+        if(dirs[i] == 0){
+                return ent->nxtlba;
+        }
+	readDisk(f,ent->nxtlba,buf);
+	goto a; 
+
 }
 int getLastIndx(char *str,char c){
 	int i = 0;
@@ -149,7 +171,9 @@ int getLastIndx(char *str,char c){
 	return sv;
 }
 void *subpntr(void *pntr,size_t a,size_t b){
+
 	void *ret = malloc(b-a+1);
+	bzero(ret,b-a+1);
 	for(size_t i = a; i < b;i++)
 		*(uint8_t*)(ret+i-a) = *(uint8_t*)(pntr+i);
 	return ret;
@@ -162,6 +186,7 @@ int writefile(char *n,FILE *in,FILE *f){
 	if(lba < 0){
 		return -1;
 	}
+
 	struct Entry *ent = malloc(512);
 	readDisk(f,lba,ent);
 	while(1){
@@ -171,16 +196,27 @@ int writefile(char *n,FILE *in,FILE *f){
 		readDisk(f,ent->contlba,ent);
 		
 	}
-	ent->nxtlba = allocSector(f);
+	ent->contlba = allocSector(f);
 	writeDisk(f,lba,ent);
-	readDisk(f,ent->nxtlba,ent);
+	lba = ent->contlba;
+	char *name = subpntr(n,getLastIndx(n,'/')+1,strlen(n));
+	ent->nsize = strlen(name);
+	ent->contlba = allocSector(f);
+	char *tpntr = ent;
+	fseek(in,0,SEEK_END);
+	int size = ftell(in);
+	fseek(in,0,SEEK_SET);
+	ent->size = size;
+	memcpy((char*)(tpntr + sizeof(*ent)),name,strlen(name));
+	writeDisk(f,lba,tpntr);
+	//lba = ent->contlba;
 	char *buf = malloc(512);
 	int twritten = 0;
 	b:;readDisk(f,lba,buf);
 	ent->contlba = allocSector(f);
 	ent->type = TYPE_FILE;
-	bzero(buf,512);
-	char *name = subpntr(n,getLastIndx(n,'/')+1,strlen(n));
+	ent->size = size;
+	memcpy(buf,ent,sizeof(*ent));
 	memcpy(buf+sizeof(*ent),name,strlen(name));
 	ent->nsize = strlen(name);
 	char c;
@@ -192,12 +228,13 @@ int writefile(char *n,FILE *in,FILE *f){
 		i++;written++;twritten++;
 	}
 	memcpy(buf+sizeof(*ent)+strlen(name),tbuf,512-sizeof(*ent)-strlen(name));
+
 	writeDisk(f,lba,buf);
+
 	if(feof(in)){
 		return twritten;
 	}
 	lba = ent->contlba;
-	free(name);
 	free(tbuf);
 	bzero(buf,512);
 	goto b;
@@ -209,19 +246,20 @@ int recurse(const char *path,FILE *f){
 	char *path2 = malloc(1024);
 	bzero(path2,1024);
 	int i = 0;
-	while(path[i] == '/')
+	while(path[i] != 0 && path[i] == '/')
 		i++;
 	i++;
-	while(path[i] != '/')
+	while(path[i] != 0 && path[i] == '/')
 		i++;
 	i++;
+
 	int j = 0;
 	while(path[i] != 0){
 		path2[j] = path[i];
 		j++;
 		i++;
 	}	
-	return _recurse(path,"",f);
+	return _recurse(path,path2,f);
 }
 int _recurse(const char *path,const char *root,FILE *f){
 	DIR *d = opendir(path);

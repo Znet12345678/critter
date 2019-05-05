@@ -24,11 +24,12 @@ void putc(char ch){
 	}
 	if(r == 25){
 		scroll();
+		r--;
 	}
 	move_cursor(c,r);
 }
 void scroll(){
-	for(int r = 1; r < 25; r++){
+	for(int r = 1; r <= 25; r++){
 		for(int c = 0; c < 80;c++){
 			vgabuf[((r-1)*80+c)*2] = vgabuf[(r*80+c)*2];
 		}

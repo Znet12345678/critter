@@ -7,7 +7,7 @@ ASM=nasm
 PWD=$(shell pwd)
 CC_16=bcc
 CFLAGS_16=-I. -DBLBUILD -DBCC -D__INTERNAL
-CFLAGS_X86_32=-nostdlib -ffreestanding -I. -DKERN -D__STANDALONE -Iinclude -std=gnu99
+CFLAGS_X86_32=-Werror -nostdlib -ffreestanding -I. -DKERN -D__STANDALONE -Iinclude -std=gnu99
 LD_16=ld86
 LD_32=i386-elf-gcc
 CFLAGS_HOST=-I.
@@ -108,7 +108,7 @@ all:
 	@echo "(CC) ${PWD}string.o"
 	@${CC} -c string.c -o string.o -nostdlib ${CFLAGS_X86_32} -D__PM
 	@echo "(CC) ${PWD}/malloc.o"
-	@${CC} -c malloc.c -o malloc.o -D__PM ${CFLAGS_X86_32} 
+	@${CC} -c malloc.c -o malloc.o -D__PM ${CFLAGS_X86_32} -Wno-error
 	@echo "(CC) ${PWD}/crt0.o"
 	@${CC} -c crt0.c -o crt0.o
 	@echo "(CC) ${PWD}/cursor.o"
@@ -124,9 +124,9 @@ all:
 	@echo "(CC) ${PWD}/puts.o"
 	@${CC} -c puts.c -o puts.o ${CFLAGS_X86_32} -D__PM
 	@echo "(CC) ${PWD}/stage3.o"
-	@${CC} -c stage3.c -o stage3.o ${CFLAGS_X86_32}
+	@${CC} -c stage3.c -o stage3.o ${CFLAGS_X86_32} -Wno-error
 	@echo "(CC) ${PWD}/llfs.o"
-	@${CC} -c llfs.c -o llfs.o ${CFLAGS_X86_32} -D__PM -Werror -D__FS_DEBUG
+	@${CC} -c llfs.c -o llfs.o ${CFLAGS_X86_32} -D__PM -Werror 
 	@echo "(LD) ${PWD}/stage3.elf"
 	@${CC} ${STAGE3_OBJS} -L. -lk -nostdlib -ffreestanding -o stage3.elf -Ttext 0x10000
 	@cp *.bin *.elf objs/*.o fs/kern

@@ -1,17 +1,11 @@
 #include "lib.h"
-void *malloc(unsigned short size){
 #ifndef __PM
+void *malloc(unsigned short size){
 	struct Mem *pntr = (struct Mem*)0x9000;
-#else
-	struct Mem *pntr = (struct Mem*)0x01000000;
-#endif
 	void *ret;
 	while(1){
-#ifndef __PM
-		if((pntr+size) < 0x9000){
-#else
-		if((pntr+size) < 0x01000000){
-#endif
+		if((pntr+size) < 0x9000){/*Overflow protection*/
+
 			puts("OUT OF MEMORY!!!!\n");
 			panic();
 		}
@@ -24,7 +18,7 @@ void *malloc(unsigned short size){
 			pntr->size = size;
 			pntr->alloc = 1;
 		       	ret=pntr + sizeof(*pntr);
-			pntr+=size;
+			pntr+=size+sizeof(*pntr);
 			pntr->alloc = 0;
 			pntr->size = save-size;
 			return ret;
@@ -37,8 +31,31 @@ void *malloc(unsigned short size){
 		}
 	}
 }
+#else
+void *malloc(unsigned long size){
+	if(size == 0)
+		return malloc(1);
+	struct Mem *pntr = (struct Mem*)0x01000000;
+	while(1){
+		if((pntr + size) < (struct Mem*)0x00100000){
+			puts("Out of memory\n");
+			panic();
+		}
+		if(pntr->alloc){
+			pntr+=sizeof(*pntr)+pntr->size;
+			continue;
+		}
+		if(pntr->size == 0){
+			pntr->alloc = 1;
+			pntr->size = size;
+			return pntr + sizeof(*pntr);
+		}else
+			pntr+=sizeof(*pntr)+pntr->size;
+	}
+}
+#endif
 void free(void *mem){
 	struct Mem *pntr = (struct Mem*)mem;
-	pntr-=sizeof(struct Mem*);
+	pntr-=sizeof(struct Mem);
 	pntr->alloc = 0;
 }
