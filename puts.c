@@ -56,6 +56,10 @@ int xlen(int i){
 void putx(int i){
 	char *pntr = malloc(intlen(i));
 	int size = xlen(i)-1;
+	if(i == 0){
+		puts("0");
+		return;
+	}
 	int j = 0;
 	while(i >= 0){
 		int c = i % 16;

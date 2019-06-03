@@ -45,6 +45,12 @@ void *malloc(unsigned long size){
 			pntr+=sizeof(*pntr)+pntr->size;
 			continue;
 		}
+		if(pntr->alloc != 0){
+			puts("A Memory Exception has occured at address:0x");
+			putx(pntr);
+			puts("!\nReason:Invalid memory structure, running into someone elses memory?");
+			panic("mem I/O");
+		}
 		if(pntr->size == 0){
 			pntr->alloc = 1;
 			pntr->size = size;
@@ -57,5 +63,20 @@ void *malloc(unsigned long size){
 void free(void *mem){
 	struct Mem *pntr = (struct Mem*)mem;
 	pntr-=sizeof(struct Mem);
+#ifdef __PM
+	if(pntr->alloc != 1){
+		if(pntr->alloc == 0){
+			puts("Memory Exception: Double free pntr 0x");
+			putx(pntr+sizeof(struct Mem));
+			puts("Press any key to continue\n");
+			getc(STDIN);
+		}else{
+			puts("Memory Exception: Freeing Invalid pntr 0x");
+			putx(pntr+sizeof(struct Mem));
+			puts("Press any key to continue\n");
+			getc(STDIN);
+		}
+	}
+#endif
 	pntr->alloc = 0;
 }

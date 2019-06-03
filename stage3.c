@@ -64,7 +64,14 @@ a:;
 	buf = malloc(512);
 	ata_read_master(buf,0,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	*(uint32_t*)0x103 = *(uint32_t*)(buf + 0x1be);
-	puts("\n");
+	idt();
+	const char *str = "Interupts work!\n";
+	asm("mov %0,%%ebx" : :"m"(str));
+	asm("mov $1,%ah");
+	asm("int $0x80");
+	char *arr[] = {"/init"};
+
+	exec(arr[0],1,arr);
 	panic("Nothing to do");
 }
 void panic(char *message){

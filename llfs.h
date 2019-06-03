@@ -7,7 +7,6 @@ struct Entry{
 	uint32_t contlba;
 	uint32_t size;
 	uint8_t nsize;
-
 }__attribute__((packed));
 #define TYPE_DIR 1
 #define TYPE_FILE 2

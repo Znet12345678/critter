@@ -6,6 +6,7 @@
 #include <llfs.h>
 #include <dirent.h>
 #include <sys/types.h>
+int countc(const char *str,char c);
 char **sep(const char *dir,char c){
         int i = 0;
         int j = 0;
@@ -17,17 +18,17 @@ char **sep(const char *dir,char c){
                 arr[0] = "";
                 return arr;
         }
-        char **ret = malloc(sizeof(*ret));
+        char **ret = malloc(sizeof(*ret)*countc(dir,c));
         int size = 0;
-	ret[0] = malloc(strlen(dir+1));
-        bzero(ret[0],strlen(dir));
+	ret[0] = malloc(strlen(dir)+1);
+        bzero(ret[0],strlen(dir)+1);
         while(i < strlen(dir)){
                 if(dir[i] == c){
                         size+=j;
                         j = 0;
 			k++;
-                        ret[k] = malloc(strlen(dir)-size);
-                        bzero(ret[k],strlen(dir)-size);
+                        ret[k] = malloc(strlen(dir)-size+1);
+                        bzero(ret[k],strlen(dir)-size+1);
                         i++;
                         continue;
                 }
@@ -104,7 +105,7 @@ int _mkdir(char *_d,FILE *f){
 
 	char *name = subpntr(_d,getLastIndx(_d,'/')+1,strlen(_d));
 	ent->nsize = strlen(name);
-	memcpy(buf,ent,sizeof(*ent));
+	memcpy(buf,ent,sizeof(*ent)+1);
 	memcpy(buf + sizeof(*ent),name,strlen(name)+1);
 	writeDisk(f,lba,buf);
 	bzero(buf,512);
@@ -207,7 +208,7 @@ int writefile(char *n,FILE *in,FILE *f){
 	int size = ftell(in);
 	fseek(in,0,SEEK_SET);
 	ent->size = size;
-	memcpy((char*)(tpntr + sizeof(*ent)),name,strlen(name));
+	memcpy((char*)(tpntr + sizeof(*ent)),name,strlen(name)+1);
 	writeDisk(f,lba,tpntr);
 	//lba = ent->contlba;
 	char *buf = malloc(512);
@@ -217,17 +218,17 @@ int writefile(char *n,FILE *in,FILE *f){
 	ent->type = TYPE_FILE;
 	ent->size = size;
 	memcpy(buf,ent,sizeof(*ent));
-	memcpy(buf+sizeof(*ent),name,strlen(name));
+	memcpy(buf+sizeof(*ent),name,strlen(name)+1);
 	ent->nsize = strlen(name);
 	char c;
 	int written = 0;
-	char *tbuf = malloc(512-sizeof(*ent)-strlen(name));
+	char *tbuf = malloc(512-sizeof(*ent)-strlen(name)-1);
 	int i = 0;
-	while(written != 512-sizeof(*ent)-strlen(name) && !feof(in)){
+	while(written != 512-sizeof(*ent)-strlen(name)-1 && !feof(in)){
 		tbuf[i] = fgetc(in);
 		i++;written++;twritten++;
 	}
-	memcpy(buf+sizeof(*ent)+strlen(name),tbuf,512-sizeof(*ent)-strlen(name));
+	memcpy(buf+sizeof(*ent)+strlen(name)+1,tbuf,512-sizeof(*ent)-strlen(name)-1);
 
 	writeDisk(f,lba,buf);
 
@@ -280,6 +281,7 @@ int _recurse(const char *path,const char *root,FILE *f){
 	d = opendir(path);
 	while((ent = readdir(d)) != NULL){
 		char *rpath = malloc(1024);
+		bzero(rpath,1024);
 		sprintf(rpath,"%s/%s",root,ent->d_name);
 		if(ent->d_type == DT_REG){
 			char *rrpath = malloc(1024);

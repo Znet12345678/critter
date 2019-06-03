@@ -1,5 +1,5 @@
-OBJS = objs/stage2.o main.o objs/ulcmp.o  objs/putc.o objs/elf.o objs/memcmp.o objs/gdt.o objs/memcpy.o  objs/getc.o objs/fat.o  objs/readdisk.o objs/string.o objs/malloc.o objs/puts.o objs/test.o objs/main.o objs/disk.o objs/getDiskGeo.o objs/bzero.o objs/writedisk.o
-STAGE3_OBJS = stage3.o llfs.o tmpfs.o memcmp.o string.o puts.o math.o objs/tty.o ata.o malloc.o
+OBJS = objs/stage2.o main.o objs/ulcmp.o  objs/getc.o objs/putc.o objs/elf.o objs/memcmp.o objs/gdt.o objs/memcpy.o  objs/getc.o objs/fat.o  objs/readdisk.o objs/string.o objs/malloc.o objs/puts.o objs/test.o objs/main.o objs/disk.o objs/getDiskGeo.o objs/bzero.o objs/writedisk.o
+STAGE3_OBJS = stage3.o inline.o idt.o ldr.o isr.o input.o llfs.o tmpfs.o memcmp.o string.o puts.o math.o objs/tty.o ata.o malloc.o
 LIBK_OBJS =  crt0.o cursor.o
 MATH_OBJS = math.o
 BINS = *.a *.bin *.elf *.img
@@ -24,6 +24,7 @@ all:
 	@rm -f *.o *.a *.so *.elf
 	@dd if=/dev/zero of=testing.img bs=1M count=100
 	@make -C stage1
+	@make -C fs/src
 	@echo "(AS) ${PWD}/ata.o"
 	@${ASM} -f elf ata.asm -o ata.o 
 	@echo "(CC) ${PWD}/objs/tty.o"
@@ -99,6 +100,7 @@ all:
 	@${ASM} -f bin test2.asm -o test2.bin 
 	@echo "(LD) ${PWD}/stage2.2.elf"
 	@${CC} stage2.2.o elf.elf.o readdisk.o memcpy.o memcmp.o -o stage2.2.elf -Ttext 0xF000 -nostdlib -ffreestanding
+
 	@echo "(OBJCOPY) ${PWD}/stage2.2.bin"
 	@objcopy -O binary --only-section=.text stage2.2.elf stage2.2.bin
 	@echo "Padding binaries..."
@@ -121,14 +123,24 @@ all:
 	@${PREFIX}ar rcs libm.a ${MATH_OBJS}
 	@echo "(CC) ${PWD}/tmpfs.o"
 	@${CC} -c tmpfs.c -o tmpfs.o ${CFLAGS_X86_32}
+	@echo "(CC) ${PWD}/inline.o"
+	@${CC} -c inline.c -o inline.o ${CFLAGS_X86_32}
+	@echo "(CC) ${PWD}/input.o"
+	@${CC} -c input.c -o input.o ${CFLAGS_X86_32}
 	@echo "(CC) ${PWD}/puts.o"
 	@${CC} -c puts.c -o puts.o ${CFLAGS_X86_32} -D__PM
 	@echo "(CC) ${PWD}/stage3.o"
 	@${CC} -c stage3.c -o stage3.o ${CFLAGS_X86_32} -Wno-error
 	@echo "(CC) ${PWD}/llfs.o"
 	@${CC} -c llfs.c -o llfs.o ${CFLAGS_X86_32} -D__PM -Werror 
+	@echo "(AS) ${PWD}/isr.o"
+	@nasm -f elf isr.asm -o isr.o
+	@echo "(CC) ${PWD}/ldr.o"
+	@${CC} -c ldr.c -o ldr.o ${CFLAGS_X86_32} -DDEBUG
+	@echo "(CC) ${PWD}/idt.o"
+	@${CC} -c idt.c -o idt.o ${CFLAGS_X86_32}
 	@echo "(LD) ${PWD}/stage3.elf"
-	@${CC} ${STAGE3_OBJS} -L. -lk -nostdlib -ffreestanding -o stage3.elf -Ttext 0x10000
+	@${CC} ${STAGE3_OBJS} -L. -lk -nostdlib -ffreestanding -o stage3.elf -Tlinker.2.ld
 	@cp *.bin *.elf objs/*.o fs/kern
 	@echo "(INSCRIBE FILE SYSTEM) ${PWD}/fs.img"
 	@./llfs.inscribe fs.img fs

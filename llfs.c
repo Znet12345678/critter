@@ -18,14 +18,16 @@ char **sep(const char *dir,char c){
 	}
 	char **ret = malloc(sizeof(*ret)*(strlen(dir)+1));
 	int size = 0;
+	ret[0] = malloc(1024);
 	bzero(ret[0],strlen(dir));
 	while(i < strlen(dir)){
 		if(dir[i] == c){
+			ret[k][j] = 0;
 			size+=j;
 			j = 0;
 			k++;
-			ret[k] = malloc(strlen(dir)-size);
-			bzero(ret[k],strlen(dir)-size);
+			ret[k] = malloc(strlen(dir)-size+1);
+			bzero(ret[k],strlen(dir)-size+1);
 			i++;
 			continue;
 		}
@@ -64,10 +66,9 @@ a:;while(1){
 		else if(ent->nsize == 0)
 			if(strncmp(dir,"\0",1) == 0)
 				break;
-
+	
 		if(ent->contlba == 0){
-			puts("Critical low level directory missing\n");
-			panic();
+			puts("No such directory!\n");
 			return 0;
   		}
 		llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
@@ -170,14 +171,14 @@ int open(const char *_file,int options){
 	uint8_t *buf = malloc(513);
 	bzero(buf,513);
 	struct Entry *ent = __opendir(substring(file,0,finc(file,'/')));
+	if(ent == 0)
+		return -1;
 	llfs_ata_read_master(buf,ent->nxtlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 	ent =(struct Entry *) buf;
 	int lba= 0;
 	char *filen = substring(file,finc(file,'/')+1,strlen(file));
-
 	while(1){
-
-		if(strncmp(buf + sizeof(*ent),filen,strlen(filen)) == 0){
+		if(strcmp(buf + sizeof(*ent),filen) == 0){
 			struct llfd *llfd = allocllfd();
 			llfd->pntr = (struct Entry *)buf;
 			llfd->t = options;
@@ -185,8 +186,8 @@ int open(const char *_file,int options){
 			return getLLFD(llfd);	
 		}
 		if(ent->contlba == 0){
-			puts("Failed to open critical file!\n");
-			panic();
+			puts("No such file or directory!\n");
+			return -1;
 		}
 		lba=  ent->contlba;
 		llfs_ata_read_master(buf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
@@ -213,17 +214,18 @@ int llread(int fd,char *buf,unsigned int n){
 //	puti(llfd->pntr->contlba);
 	while(j < n){
 		bzero(tbuf,1024);
-		uint8_t sz = 512-sizeof(*ent)-ent->nsize;
+		uint32_t sz = ((j + 512-sizeof(*ent)-ent->nsize) > n) ? abs(n-j) : 512-sizeof(*ent)-ent->nsize-1 ;
 		llfs_ata_read_master(tbuf,ent->contlba,*(uint16_t*)0x100,*(uint8_t*)0x102);
 		memcpy(ent,tbuf,sizeof(*ent));
-		memcpy(buf + j,tbuf + sizeof(*ent) + ent->nsize,j+sz > n ? abs(n-j) : sz);
-//		putx(ent->contlba);
-///		puts("\n");
+		memcpy(buf + j,tbuf + sizeof(*ent) + ent->nsize+1,sz);
+//		putx(j);
+//		puts("\n");
+
 		if(ent->contlba == 0)
 			return j;
 
 
-		j+=j+sz > n ? abs(n-j): sz;
+		j+=sz;
 	}
 	free(tbuf);
 	return j;
